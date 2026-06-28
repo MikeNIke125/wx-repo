@@ -582,68 +582,6 @@
     }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-    /* Precip forecast strip */
-    .precip-strip {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(255,255,255,0.07);
-    }
-    .precip-strip-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-    }
-    .precip-strip-source { font-size: 10px; font-weight: 400; text-transform: none; }
-    #precip-bars {
-      display: flex;
-      gap: 4px;
-      align-items: flex-end;
-      height: 64px;
-    }
-    .pb-col {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 3px;
-      min-width: 0;
-    }
-    .pb-pct {
-      font-size: 10px;
-      color: var(--text-muted);
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .pb-pct.wet { color: #64b5f6; }
-    .pb-bar-wrap {
-      flex: 1;
-      width: 100%;
-      display: flex;
-      align-items: flex-end;
-      background: rgba(255,255,255,0.05);
-      border-radius: 4px 4px 0 0;
-      overflow: hidden;
-      min-height: 32px;
-    }
-    .pb-bar {
-      width: 100%;
-      border-radius: 3px 3px 0 0;
-      transition: height 0.4s ease;
-      min-height: 2px;
-    }
-    .pb-time {
-      font-size: 9px;
-      color: var(--text-muted);
-      white-space: nowrap;
-    }
-    .pb-time.now-col { color: var(--accent); font-weight: 700; }
-
     /* Radar legend */
     .radar-legend {
       position: absolute;
@@ -800,7 +738,7 @@
 <body>
 
 <header>
-  <div class="logo">🌤 Weather</div>
+  <div class="logo">Schmidt-WX</div>
   <div class="search-wrap">
     <input id="search-input" type="text" placeholder="Search city, zip, or address…" autocomplete="off" />
     <span class="search-clear" id="search-clear">✕</span>
@@ -979,14 +917,6 @@
         </div>
       </div>
 
-      <!-- 12-hour precipitation probability strip -->
-      <div class="precip-strip" id="precip-strip">
-        <div class="precip-strip-head">
-          <span>12-Hour Precipitation Outlook</span>
-          <span class="precip-strip-source" id="precip-strip-loc"></span>
-        </div>
-        <div id="precip-bars"></div>
-      </div>
     </div>   <!-- /radar-panel -->
     </div>   <!-- /radar-map-wrap -->
   </div>     <!-- /rsub-live -->
@@ -1763,7 +1693,6 @@ async function initRadar() {
 
   if (radarMap) {
     updateLocationMarker();
-    loadPrecipForecast(loc.lat, loc.lon);
     return;
   }
 
@@ -1784,7 +1713,6 @@ async function initRadar() {
   setupRadarSearch();
   await loadRainViewer();
   setupRadarControls();
-  loadPrecipForecast(loc.lat, loc.lon);
 }
 
 
@@ -2158,88 +2086,6 @@ function setupRadarControls() {
     if (e.key === ' ')          { e.preventDefault(); radTogglePlay(); }
     if (e.key === 'ArrowLeft')  radPrev();
     if (e.key === 'ArrowRight') radNext();
-  });
-}
-
-// ───────────────────────────────────────────────────────────
-// 12-hour precipitation forecast strip
-// ───────────────────────────────────────────────────────────
-
-async function loadPrecipForecast(lat, lon) {
-  const locName = (state.currentLocation || DEFAULT_LOCATION).name;
-  document.getElementById('precip-strip-loc').textContent = locName;
-  document.getElementById('precip-bars').innerHTML =
-    '<span style="font-size:12px;color:var(--text-muted)">Loading…</span>';
-
-  try {
-    const params = new URLSearchParams({
-      latitude: lat, longitude: lon,
-      hourly: 'precipitation_probability,precipitation,weather_code,is_day',
-      temperature_unit: 'fahrenheit',
-      wind_speed_unit: 'mph',
-      precipitation_unit: 'inch',
-      timezone: 'auto',
-      forecast_days: 2,
-    });
-    const res  = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
-    const data = await res.json();
-    renderPrecipChart(data);
-  } catch (err) {
-    document.getElementById('precip-bars').innerHTML =
-      '<span style="font-size:12px;color:var(--text-muted)">Forecast unavailable</span>';
-  }
-}
-
-function renderPrecipChart(data) {
-  const bars = document.getElementById('precip-bars');
-  bars.innerHTML = '';
-
-  const now   = new Date();
-  const times = data.hourly.time;
-
-  // Find the current hour index
-  let startIdx = times.findIndex(t => new Date(t.replace('T', ' ')) >= now);
-  if (startIdx < 0) startIdx = 0;
-
-  // Show 12 hours
-  const hours = times.slice(startIdx, startIdx + 12).map((t, i) => {
-    const idx = startIdx + i;
-    return {
-      time:  new Date(t.replace('T', ' ')),
-      prob:  data.hourly.precipitation_probability[idx] ?? 0,
-      precip: data.hourly.precipitation[idx] ?? 0,
-      code:  data.hourly.weather_code[idx] ?? 0,
-      isDay: (data.hourly.is_day?.[idx] ?? 1) === 1,
-    };
-  });
-
-  const maxProb = Math.max(...hours.map(h => h.prob), 1);
-
-  hours.forEach((h, i) => {
-    const isNow  = i === 0;
-    const prob   = h.prob;
-    const isWet  = prob >= 30;
-
-    // Bar color scales from faint to vivid blue with probability
-    const alpha  = 0.15 + (prob / 100) * 0.85;
-    const color  = prob > 70 ? `rgba(33,150,243,${alpha})`
-                 : prob > 40 ? `rgba(100,181,246,${alpha})`
-                 : prob > 20 ? `rgba(144,202,249,${alpha})`
-                 : `rgba(255,255,255,0.08)`;
-
-    const heightPct = Math.max(4, (prob / maxProb) * 100);
-
-    const col = document.createElement('div');
-    col.className = 'pb-col';
-    col.title = `${h.time.toLocaleString([], { weekday:'short', hour:'numeric' })}: ${prob}% precip${h.precip > 0 ? `, ${h.precip.toFixed(2)}"` : ''}`;
-    col.innerHTML = `
-      <div class="pb-pct${isWet ? ' wet' : ''}">${prob > 0 ? prob + '%' : ''}</div>
-      <div class="pb-bar-wrap">
-        <div class="pb-bar" style="height:${heightPct}%;background:${color};"></div>
-      </div>
-      <div class="pb-time${isNow ? ' now-col' : ''}">${isNow ? 'Now' : fmtTime(h.time)}</div>
-    `;
-    bars.appendChild(col);
   });
 }
 
