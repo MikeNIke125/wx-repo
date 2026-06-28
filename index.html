@@ -1060,8 +1060,9 @@
 
 const DEFAULT_LOCATION = { name: 'Clayton, NC', lat: 35.6504, lon: -78.4558 };
 const NWS_HEADERS = { 'User-Agent': 'WxApp/1.0', 'Accept': 'application/geo+json' };
-const LS_SAVED = 'wx_saved_v3';
-const LS_PREFS = 'wx_prefs_v2';
+const LS_SAVED    = 'wx_saved_v3';
+const LS_PREFS    = 'wx_prefs_v2';
+const LS_LAST_LOC = 'wx_last_loc';
 
 // ───────────────────────────────────────────────────────────
 // App state
@@ -1237,6 +1238,7 @@ async function getOpenMeteo(lat, lon) {
 
 async function loadWeather(location) {
   state.currentLocation = location;
+  try { localStorage.setItem(LS_LAST_LOC, JSON.stringify(location)); } catch {}
   showLoading(true);
   hideError();
   document.getElementById('main-content').classList.add('hidden');
@@ -2345,7 +2347,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('unit-toggle').addEventListener('click', toggleUnits);
   document.getElementById('retry-btn').addEventListener('click', () => loadWeather(state.currentLocation || DEFAULT_LOCATION));
 
-  if (navigator.geolocation) {
+  // Use last known location instantly if available; otherwise try geolocation
+  let lastLoc = null;
+  try { lastLoc = JSON.parse(localStorage.getItem(LS_LAST_LOC)); } catch {}
+
+  if (lastLoc?.lat && lastLoc?.lon) {
+    loadWeather(lastLoc);
+  } else if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       async pos => {
         const { latitude: lat, longitude: lon } = pos.coords;
