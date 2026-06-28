@@ -1309,7 +1309,7 @@ async function loadHRRR(lat, lon) {
   const card = document.getElementById('hrrr-card');
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&hourly=temperature_2m,precipitation_probability,windgusts_10m,weathercode,cape` +
+      `&hourly=temperature_2m,precipitation_probability,windspeed_10m,windgusts_10m,weathercode,cape` +
       `&models=gfs_hrrr&temperature_unit=fahrenheit&windspeed_unit=mph` +
       `&timeformat=unixtime&timezone=auto&forecast_days=2`;
     const r = await fetch(url);
@@ -1336,12 +1336,14 @@ function renderHRRR(data) {
 
   times.slice(first, end).forEach((t, i) => {
     const idx   = first + i;
+    const wind  = Math.round(data.hourly.windspeed_10m[idx] || 0);
     const gust  = Math.round(data.hourly.windgusts_10m[idx] || 0);
-    const precip = data.hourly.precipitation_probability[idx];
+    const precip = data.hourly.precipitation_probability[idx] ?? 0;
     const temp  = data.hourly.temperature_2m[idx];
     const wmo   = data.hourly.weathercode[idx];
     const d     = new Date(t * 1000);
     const isDay = d.getHours() >= 6 && d.getHours() < 20;
+    const gustStr = gust > wind + 5 ? ` (${gust}g)` : '';
     const el = document.createElement('div');
     el.className = 'hour-item' + (i === 0 ? ' now' : '');
     el.style.scrollSnapAlign = 'start';
@@ -1349,8 +1351,8 @@ function renderHRRR(data) {
       <div class="hour-time">${i === 0 ? 'Now' : fmtTime(d)}</div>
       <div class="hour-emoji">${wmoEmoji(wmo, isDay)}</div>
       <div class="hour-temp">${fmtTemp(temp)}</div>
-      ${precip > 15 ? `<div class="hour-precip">💧${precip}%</div>` : ''}
-      ${gust >= 15  ? `<div class="hrrr-gust">💨${gust}</div>`      : ''}`;
+      <div class="hour-precip" style="${precip === 0 ? 'color:var(--text-muted)' : ''}">💧${precip}%</div>
+      <div class="hrrr-gust" style="${wind < 5 ? 'color:var(--text-muted)' : ''}">💨${wind}${gustStr}</div>`;
     c.appendChild(el);
   });
 
