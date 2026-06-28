@@ -313,6 +313,8 @@
     .hour-emoji { font-size: 21px; line-height: 1; }
     .hour-temp { font-size: 13px; font-weight: 600; }
     .hour-precip { font-size: 11px; color: #64b5f6; }
+    .hrrr-gust   { font-size: 11px; color: #aed581; }
+    .hrrr-badge  { font-size: 10px; color: var(--text-muted); background: rgba(255,255,255,0.07); border-radius: 10px; padding: 2px 8px; margin-left: 8px; font-weight: 400; vertical-align: middle; }
 
     /* ── Daily ───────────────────────────────────────────── */
     #daily-list { display: flex; flex-direction: column; }
@@ -891,6 +893,13 @@
       <div id="hourly-scroll"></div>
     </div>
 
+    <!-- HRRR Model -->
+    <div class="card fade-in" id="hrrr-card" style="display:none;">
+      <div class="section-label">HRRR Forecast <span class="hrrr-badge">3km · Updates hourly</span></div>
+      <div id="hrrr-scroll" style="display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;scroll-snap-type:x mandatory;"></div>
+      <div id="hrrr-cape-row"></div>
+    </div>
+
     <!-- 7-day -->
     <div class="card fade-in">
       <div class="section-label">7-Day Forecast</div>
@@ -1245,6 +1254,7 @@ async function loadWeather(location) {
         getAlerts(location.lat, location.lon),
       ]);
       renderNWS(location, obs, forecast, hourly, alerts, props);
+      loadHRRR(location.lat, location.lon);
     } else {
       const om = await getOpenMeteo(location.lat, location.lon);
       renderOpenMeteo(location, om);
@@ -1455,6 +1465,73 @@ function renderOMHourly(data) {
       ${precip>15?`<div class="hour-precip">💧${precip}%</div>`:''}`;
     c.appendChild(el);
   });
+}
+
+async function loadHRRR(lat, lon) {
+  const card = document.getElementById('hrrr-card');
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&hourly=temperature_2m,precipitation_probability,windgusts_10m,weathercode,cape` +
+      `&models=gfs_hrrr&temperature_unit=fahrenheit&windspeed_unit=mph` +
+      `&timeformat=unixtime&timezone=auto&forecast_days=2`;
+    const r = await fetch(url);
+    const data = await r.json();
+    if (data.error) { card.style.display = 'none'; return; }
+    renderHRRR(data);
+    card.style.display = '';
+  } catch {
+    card.style.display = 'none';
+  }
+}
+
+function renderHRRR(data) {
+  const c = document.getElementById('hrrr-scroll');
+  c.innerHTML = '';
+  const now = Math.floor(Date.now() / 1000);
+  const times = data.hourly.time;
+  let first = times.findIndex(t => t >= now - 1800);
+  if (first < 0) first = 0;
+  const end = Math.min(first + 18, times.length);
+
+  let maxCape = 0;
+  for (let i = first; i < end; i++) maxCape = Math.max(maxCape, data.hourly.cape[i] || 0);
+
+  times.slice(first, end).forEach((t, i) => {
+    const idx   = first + i;
+    const gust  = Math.round(data.hourly.windgusts_10m[idx] || 0);
+    const precip = data.hourly.precipitation_probability[idx];
+    const temp  = data.hourly.temperature_2m[idx];
+    const wmo   = data.hourly.weathercode[idx];
+    const d     = new Date(t * 1000);
+    const isDay = d.getHours() >= 6 && d.getHours() < 20;
+    const el = document.createElement('div');
+    el.className = 'hour-item' + (i === 0 ? ' now' : '');
+    el.style.scrollSnapAlign = 'start';
+    el.innerHTML = `
+      <div class="hour-time">${i === 0 ? 'Now' : fmtTime(d)}</div>
+      <div class="hour-emoji">${wmoEmoji(wmo, isDay)}</div>
+      <div class="hour-temp">${fmtTemp(temp)}</div>
+      ${precip > 15 ? `<div class="hour-precip">💧${precip}%</div>` : ''}
+      ${gust >= 15  ? `<div class="hrrr-gust">💨${gust}</div>`      : ''}`;
+    c.appendChild(el);
+  });
+
+  // Storm potential banner from CAPE
+  const capeRow = document.getElementById('hrrr-cape-row');
+  if (maxCape >= 500) {
+    const level = maxCape >= 2500 ? 'extreme' : maxCape >= 1500 ? 'high' : 'moderate';
+    const info  = {
+      moderate: { label: '⚡ Moderate Storm Potential', color: '#ffd54f' },
+      high:     { label: '⛈️ High Storm Potential',     color: '#ff9800' },
+      extreme:  { label: '🌪️ Extreme Storm Potential',  color: '#f44336' },
+    }[level];
+    capeRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-top:8px;padding:6px 10px;` +
+      `border-radius:8px;background:${info.color}22;color:${info.color};font-size:12px;font-weight:600;`;
+    capeRow.innerHTML = `${info.label}<span style="color:var(--text-muted);font-weight:400;margin-left:4px;">` +
+      `CAPE ${Math.round(maxCape)} J/kg · next 18h</span>`;
+  } else {
+    capeRow.style.display = 'none';
+  }
 }
 
 // ───────────────────────────────────────────────────────────
