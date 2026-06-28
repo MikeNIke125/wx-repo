@@ -1343,7 +1343,7 @@ function renderHRRR(data) {
     const wmo   = data.hourly.weathercode[idx];
     const d     = new Date(t * 1000);
     const isDay = d.getHours() >= 6 && d.getHours() < 20;
-    const gustStr = gust > wind + 5 ? ` (${gust}g)` : '';
+    const gustStr = gust > 0 ? ` (${gust}g)` : '';
     const el = document.createElement('div');
     el.className = 'hour-item' + (i === 0 ? ' now' : '');
     el.style.scrollSnapAlign = 'start';
