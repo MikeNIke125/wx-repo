@@ -1155,8 +1155,8 @@ const wmoDesc  = c => (WMO[c] || {t:'Unknown'}).t;
 // ───────────────────────────────────────────────────────────
 
 async function geocode(q) {
-  const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=en&format=json`);
-  return (await r.json()).results || [];
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1`);
+  return await r.json();
 }
 
 async function reverseGeocode(lat, lon) {
@@ -1638,20 +1638,30 @@ async function doSearch(q) {
     dropdown.innerHTML = '';
     if (!results.length) { dropdown.innerHTML='<div class="search-spinner">No results found.</div>'; return; }
     results.forEach(r => {
-      const name = [r.name,r.admin1,r.country_code].filter(Boolean).join(', ');
+      const addr = r.address || {};
+      const cc = (addr.country_code || '').toUpperCase();
+      const city  = addr.city || addr.town || addr.village || addr.county || '';
+      const state = addr.state || '';
+      const nameParts = [];
+      if (addr.house_number && addr.road) nameParts.push(`${addr.house_number} ${addr.road}`);
+      else if (addr.road) nameParts.push(addr.road);
+      if (city)  nameParts.push(city);
+      if (state) nameParts.push(state);
+      const name   = nameParts.join(', ') || r.display_name.split(',')[0];
+      const detail = [addr.country].filter(Boolean).join(', ');
       const item = document.createElement('div');
       item.className = 'search-result-item';
       item.innerHTML = `
-        <span class="sr-flag">${countryFlag(r.country_code)}</span>
+        <span class="sr-flag">${countryFlag(cc)}</span>
         <div>
-          <div class="sr-name">${r.name}</div>
-          <div class="sr-detail">${[r.admin1,r.admin2,r.country].filter(Boolean).join(', ')}</div>
+          <div class="sr-name">${name}</div>
+          <div class="sr-detail">${detail}</div>
         </div>`;
       item.addEventListener('click', () => {
         document.getElementById('search-input').value='';
         document.getElementById('search-clear').style.display='none';
         dropdown.style.display='none';
-        loadWeather({ name, lat:r.latitude, lon:r.longitude });
+        loadWeather({ name, lat: parseFloat(r.lat), lon: parseFloat(r.lon) });
       });
       dropdown.appendChild(item);
     });
