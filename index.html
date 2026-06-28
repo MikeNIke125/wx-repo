@@ -540,8 +540,7 @@
     .leaflet-control-attribution { background: rgba(8,18,34,0.8) !important; color: var(--text-muted) !important; font-size: 10px !important; }
     .leaflet-control-attribution a { color: var(--accent) !important; }
     .leaflet-bar { border: 1px solid var(--card-border) !important; box-shadow: none !important; }
-    /* smooth crossfade between radar frames */
-    .leaflet-layer { transition: opacity 0.25s ease; }
+    /* opacity managed via requestAnimationFrame — no CSS transition needed */
 
     /* Forecast mode map overlay */
     #forecast-mode-badge {
@@ -996,9 +995,9 @@
           <span class="radar-time-type past" id="radar-time-type">LIVE</span>
         </div>
         <select class="radar-speed-select" id="radar-speed" title="Animation speed">
-          <option value="1500">Slow</option>
-          <option value="800" selected>Normal</option>
-          <option value="350">Fast</option>
+          <option value="2500">Slow</option>
+          <option value="1000" selected>Normal</option>
+          <option value="300">Fast</option>
         </select>
         <div class="radar-opacity-wrap">
           <span>Opacity</span>
@@ -1821,6 +1820,13 @@ let currentFrame   = 0;
 let prevFrame      = -1;
 let radarPlaying   = false;
 let radarTimer     = null;
+let rafId          = null;
+let fadeInProgress = false;
+let fadeFromIdx    = -1;
+let fadeToIdx      = -1;
+let fadeStartTime  = 0;
+let holdStartTime  = 0;
+const FADE_MS      = 600;
 let locationMarker = null;
 
 async function initRadar() {
@@ -2110,18 +2116,48 @@ async function preloadAllFrames() {
 }
 
 function showFrame(idx) {
+  // Snap out of any in-progress fade before jumping
+  if (fadeInProgress && fadeFromIdx >= 0 && radarLayers[fadeFromIdx]) {
+    radarLayers[fadeFromIdx].setOpacity(0);
+    fadeInProgress = false;
+  }
   const opacity = parseInt(document.getElementById('radar-opacity').value) / 100;
-  // Only touch the two layers that are changing — avoids thrashing all layers every tick
   if (prevFrame >= 0 && prevFrame !== idx && radarLayers[prevFrame]) {
     radarLayers[prevFrame].setOpacity(0);
   }
-  if (radarLayers[idx]) {
-    radarLayers[idx].setOpacity(opacity);
-  }
+  if (radarLayers[idx]) radarLayers[idx].setOpacity(opacity);
   prevFrame    = currentFrame;
   currentFrame = idx;
   updateRadarTimeDisplay();
   updateTimeline();
+}
+
+function radarRAFLoop(ts) {
+  if (!radarPlaying) return;
+  const holdMs  = getRadarSpeed();
+  const opacity = parseInt(document.getElementById('radar-opacity').value) / 100;
+
+  if (!fadeInProgress) {
+    if (ts - holdStartTime >= holdMs) {
+      fadeFromIdx    = currentFrame;
+      fadeToIdx      = (currentFrame + 1) % radarFrames.length;
+      fadeStartTime  = ts;
+      fadeInProgress = true;
+    }
+  } else {
+    const t = Math.min(1, (ts - fadeStartTime) / FADE_MS);
+    if (radarLayers[fadeFromIdx]) radarLayers[fadeFromIdx].setOpacity(opacity * (1 - t));
+    if (radarLayers[fadeToIdx])   radarLayers[fadeToIdx].setOpacity(opacity * t);
+    if (t >= 1) {
+      prevFrame      = currentFrame;
+      currentFrame   = fadeToIdx;
+      fadeInProgress = false;
+      holdStartTime  = ts;
+      updateRadarTimeDisplay();
+      updateTimeline();
+    }
+  }
+  rafId = requestAnimationFrame(radarRAFLoop);
 }
 
 // Index of the last observed (non-nowcast) frame — set in loadRainViewer
@@ -2197,24 +2233,31 @@ function radNext()       { stopPlay(); showFrame(Math.min(radarFrames.length - 1
 function radJumpToNow()  { stopPlay(); showFrame(nowFrameIdx); }
 
 function radarPlay() {
-  if (radarPlaying) return;          // guard against double-start
-  radarPlaying = true;
+  if (radarPlaying) return;
+  radarPlaying   = true;
+  fadeInProgress = false;
+  holdStartTime  = performance.now();
   document.getElementById('radar-play').textContent = '⏸';
-  clearInterval(radarTimer);         // safety clear before setting new interval
-  radarTimer = setInterval(stepFrame, getRadarSpeed());
+  rafId = requestAnimationFrame(radarRAFLoop);
 }
 
 function stopPlay() {
   radarPlaying = false;
-  clearInterval(radarTimer);
-  radarTimer = null;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  // Snap to incoming frame if mid-fade
+  if (fadeInProgress && fadeToIdx >= 0) {
+    const opacity = parseInt(document.getElementById('radar-opacity').value) / 100;
+    if (radarLayers[fadeFromIdx]) radarLayers[fadeFromIdx].setOpacity(0);
+    if (radarLayers[fadeToIdx])   radarLayers[fadeToIdx].setOpacity(opacity);
+    prevFrame      = currentFrame;
+    currentFrame   = fadeToIdx;
+    fadeInProgress = false;
+    updateRadarTimeDisplay();
+    updateTimeline();
+  }
+  clearInterval(radarTimer); radarTimer = null;
   const btn = document.getElementById('radar-play');
   if (btn) btn.textContent = '▶';
-}
-
-function stepFrame() {
-  if (!radarFrames.length) return;
-  showFrame((currentFrame + 1) % radarFrames.length);
 }
 
 function getRadarSpeed() {
