@@ -1621,7 +1621,10 @@ function geolocate() {
     loadWeather({ name, lat, lon });
   }, err => {
     btn.textContent='📍'; btn.disabled=false;
-    alert('Could not get location: ' + err.message);
+    // Silently fall back; denied permission is not an error worth alarming the user
+    if (err.code !== err.PERMISSION_DENIED) {
+      showError('Could not get your location. Try searching for a city instead.');
+    }
   }, { timeout:10000 });
 }
 
