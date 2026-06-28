@@ -349,6 +349,7 @@
     .dd-stat { font-size: 12px; color: var(--text-muted); background: rgba(255,255,255,0.06); border-radius: 8px; padding: 3px 9px; }
     .day-detail-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; font-style: italic; padding: 0 2px; }
     .day-name { font-size: 14px; font-weight: 600; }
+    .day-date { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 5px; }
     .day-condition { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
     .day-condition .emoji { font-size: 19px; }
     .day-precip-badge { font-size: 11px; color: #64b5f6; background: rgba(100,181,246,0.12); border-radius: 10px; padding: 2px 7px; white-space: nowrap; }
@@ -1411,7 +1412,7 @@ function renderHRRR(data) {
 // Render: Daily
 // ───────────────────────────────────────────────────────────
 
-function appendDay(container, { name, emoji, description, highF, lowF, precip, windSpeed, windDir, humidity, detailedForecast, precipAmt, gustMph }) {
+function appendDay(container, { name, dateLabel, emoji, description, highF, lowF, precip, windSpeed, windDir, humidity, detailedForecast, precipAmt, gustMph }) {
   const wrapper = document.createElement('div');
   wrapper.className = 'day-item';
 
@@ -1424,7 +1425,7 @@ function appendDay(container, { name, emoji, description, highF, lowF, precip, w
     ? `<span>${hi}</span> <span class="day-low">/ ${lo}</span>`
     : highF != null ? `<span>${hi}</span>` : `<span class="day-low">${lo}</span>`;
   row.innerHTML = `
-    <div class="day-name">${name}</div>
+    <div class="day-name">${name}${dateLabel ? `<span class="day-date">${dateLabel}</span>` : ''}</div>
     <div class="day-condition"><span class="emoji">${emoji}</span><span>${description}</span></div>
     ${badge}
     <div class="day-temps">${temps}</div>
@@ -1458,10 +1459,11 @@ function renderNWSDaily(periods) {
   let i = 0, days = 0;
   while (i < periods.length && days < 7) {
     const p = periods[i];
+    const dateLabel = p.startTime ? new Date(p.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     if (p.isDaytime) {
       const n = periods[i+1];
       appendDay(c, {
-        name: p.name, emoji: nwsEmoji(p.shortForecast, true),
+        name: p.name, dateLabel, emoji: nwsEmoji(p.shortForecast, true),
         description: p.shortForecast, highF: p.temperature, lowF: n?.temperature ?? null,
         precip: p.probabilityOfPrecipitation?.value ?? 0,
         windSpeed: p.windSpeed, windDir: p.windDirection,
@@ -1471,7 +1473,7 @@ function renderNWSDaily(periods) {
       i += 2;
     } else {
       appendDay(c, {
-        name: p.name, emoji: nwsEmoji(p.shortForecast, false),
+        name: p.name, dateLabel, emoji: nwsEmoji(p.shortForecast, false),
         description: p.shortForecast, highF: null, lowF: p.temperature,
         precip: p.probabilityOfPrecipitation?.value ?? 0,
         windSpeed: p.windSpeed, windDir: p.windDirection,
@@ -1493,8 +1495,9 @@ function renderOMDaily(data) {
     const name = t===today ? 'Today' : i===1 ? 'Tomorrow' : date.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
     const dir = data.daily.wind_direction_10m_dominant?.[i];
     const pSum = data.daily.precipitation_sum?.[i];
+    const dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     appendDay(c, {
-      name, emoji: wmoEmoji(data.daily.weather_code[i], true),
+      name, dateLabel, emoji: wmoEmoji(data.daily.weather_code[i], true),
       description: wmoDesc(data.daily.weather_code[i]),
       highF: data.daily.temperature_2m_max[i], lowF: data.daily.temperature_2m_min[i],
       precip: data.daily.precipitation_probability_max[i] ?? 0,
