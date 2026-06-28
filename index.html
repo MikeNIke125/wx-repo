@@ -1060,6 +1060,7 @@
 
 const DEFAULT_LOCATION = { name: 'Clayton, NC', lat: 35.6504, lon: -78.4558 };
 const NWS_HEADERS = { 'User-Agent': 'WxApp/1.0', 'Accept': 'application/geo+json' };
+const NWS_OPTS    = { headers: NWS_HEADERS, cache: 'no-cache' };
 const LS_SAVED    = 'wx_saved_v3';
 const LS_PREFS    = 'wx_prefs_v2';
 const LS_LAST_LOC = 'wx_last_loc';
@@ -1108,9 +1109,9 @@ function fmtTime(date) {
 function fmtUpdated(date) {
   if (!date) return '';
   const diff = Math.floor((Date.now() - date) / 60000);
-  if (diff < 1)  return 'Updated just now';
-  if (diff < 60) return `Updated ${diff} min ago`;
-  return 'Updated at ' + new Date(date).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+  if (diff < 1)  return 'Obs: just now';
+  if (diff < 60) return `Obs: ${diff} min ago`;
+  return 'Obs: ' + new Date(date).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
 }
 function countryFlag(cc) {
   if (!cc || cc.length !== 2) return '🌐';
@@ -1183,7 +1184,7 @@ async function reverseGeocode(lat, lon) {
 
 async function getNWSPoint(lat, lon) {
   try {
-    const r = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, { headers: NWS_HEADERS });
+    const r = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, NWS_OPTS);
     if (!r.ok) return null;
     return await r.json();
   } catch { return null; }
@@ -1191,7 +1192,7 @@ async function getNWSPoint(lat, lon) {
 
 async function fetchNWS(url) {
   try {
-    const r = await fetch(url, { headers: NWS_HEADERS });
+    const r = await fetch(url, NWS_OPTS);
     if (!r.ok) return null;
     return await r.json();
   } catch { return null; }
@@ -1199,12 +1200,12 @@ async function fetchNWS(url) {
 
 async function getNWSObs(stationsUrl) {
   try {
-    const sr = await fetch(stationsUrl + '?limit=5', { headers: NWS_HEADERS });
+    const sr = await fetch(stationsUrl + '?limit=5', NWS_OPTS);
     if (!sr.ok) return null;
     const sd = await sr.json();
     const sid = sd.features?.[0]?.properties?.stationIdentifier;
     if (!sid) return null;
-    const or = await fetch(`https://api.weather.gov/stations/${sid}/observations/latest`, { headers: NWS_HEADERS });
+    const or = await fetch(`https://api.weather.gov/stations/${sid}/observations/latest`, NWS_OPTS);
     if (!or.ok) return null;
     return await or.json();
   } catch { return null; }
@@ -1212,7 +1213,7 @@ async function getNWSObs(stationsUrl) {
 
 async function getAlerts(lat, lon) {
   try {
-    const r = await fetch(`https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`, { headers: NWS_HEADERS });
+    const r = await fetch(`https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`, NWS_OPTS);
     if (!r.ok) return [];
     return (await r.json()).features || [];
   } catch { return []; }
