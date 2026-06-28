@@ -1613,21 +1613,38 @@ async function doSearch(q) {
 // ───────────────────────────────────────────────────────────
 
 function geolocate() {
-  if (!navigator.geolocation) { alert('Geolocation not supported.'); return; }
+  if (!navigator.geolocation) { showError('Geolocation is not supported by this browser.'); return; }
   const btn = document.getElementById('geolocate-btn');
-  btn.textContent='⏳'; btn.disabled=true;
-  navigator.geolocation.getCurrentPosition(async pos => {
-    btn.textContent='📍'; btn.disabled=false;
-    const { latitude:lat, longitude:lon } = pos.coords;
-    const { name } = await reverseGeocode(lat, lon);
-    loadWeather({ name, lat, lon });
-  }, err => {
-    btn.textContent='📍'; btn.disabled=false;
-    // Silently fall back; denied permission is not an error worth alarming the user
-    if (err.code !== err.PERMISSION_DENIED) {
-      showError('Could not get your location. Try searching for a city instead.');
-    }
-  });
+
+  const doLocate = () => {
+    btn.textContent='⏳'; btn.disabled=true;
+    navigator.geolocation.getCurrentPosition(async pos => {
+      btn.textContent='📍'; btn.disabled=false;
+      const { latitude:lat, longitude:lon } = pos.coords;
+      const { name } = await reverseGeocode(lat, lon);
+      loadWeather({ name, lat, lon });
+    }, err => {
+      btn.textContent='📍'; btn.disabled=false;
+      if (err.code === err.PERMISSION_DENIED) {
+        showError('Location access is blocked. Tap the lock icon in your browser\'s address bar, set Location to "Allow", then try again.');
+      } else {
+        showError('Could not get your location. Try searching for a city instead.');
+      }
+    });
+  };
+
+  // Use Permissions API (not available on iOS Safari) to catch denied state before requesting
+  if (navigator.permissions) {
+    navigator.permissions.query({ name: 'geolocation' }).then(result => {
+      if (result.state === 'denied') {
+        showError('Location access is blocked. Tap the lock icon in your browser\'s address bar, set Location to "Allow", then try again.');
+      } else {
+        doLocate();
+      }
+    }).catch(() => doLocate());
+  } else {
+    doLocate();
+  }
 }
 
 // ───────────────────────────────────────────────────────────
