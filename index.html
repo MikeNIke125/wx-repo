@@ -2233,6 +2233,7 @@ function setupRadarControls() {
   });
   document.addEventListener('keydown', e => {
     if (!document.getElementById('tab-radar').classList.contains('active')) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === ' ')          { e.preventDefault(); radTogglePlay(); }
     if (e.key === 'ArrowLeft')  radPrev();
     if (e.key === 'ArrowRight') radNext();
