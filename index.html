@@ -694,48 +694,8 @@
     .fade-in { animation: fadeIn 0.4s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* ── Radar sub-navigation ───────────────────────────── */
-    .radar-subnav {
-      display: flex;
-      gap: 4px;
-      padding: 6px 14px;
-      background: rgba(6,12,24,0.7);
-      border-bottom: 1px solid rgba(255,255,255,0.07);
-      flex-shrink: 0;
-    }
-    .rsub-btn {
-      padding: 5px 14px;
-      border: 1px solid transparent;
-      border-radius: 16px;
-      background: transparent;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      transition: all 0.2s;
-    }
-    .rsub-btn:hover { color: var(--text); }
-    .rsub-btn.active { background: var(--accent-dim); border-color: rgba(96,180,240,0.3); color: var(--accent); }
-
-    /* Live radar sub-panel */
+    /* Live radar panel */
     #rsub-live { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-    /* Forecast radar sub-panel */
-    #rsub-forecast { flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; }
-    #windy-frame   { flex: 1; width: 100%; border: none; min-height: 0; }
-    .windy-footer  {
-      flex-shrink: 0;
-      padding: 7px 16px;
-      font-size: 11px;
-      color: var(--text-muted);
-      background: rgba(6,12,24,0.85);
-      border-top: 1px solid rgba(255,255,255,0.07);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .windy-footer a { color: var(--accent); text-decoration: none; }
 
     /* Radar address search — centered overlay on map */
     #radar-search-overlay {
@@ -924,12 +884,6 @@
 <!-- ── RADAR TAB ─────────────────────────────────────────── -->
 <div id="tab-radar">
 
-  <!-- Sub-navigation: Live vs Forecast -->
-  <div class="radar-subnav">
-    <button class="rsub-btn active"  onclick="setRadarSub('live')">📡 Live + Nowcast</button>
-    <button class="rsub-btn"         onclick="setRadarSub('forecast')">🔮 Forecast Radar</button>
-  </div>
-
   <!-- ── LIVE RADAR sub-panel ─────────────────────────── -->
   <div id="rsub-live">
     <div id="radar-map-wrap">
@@ -1031,22 +985,6 @@
     </div>   <!-- /radar-map-wrap -->
   </div>     <!-- /rsub-live -->
 
-  <!-- ── FORECAST RADAR sub-panel ────────────────────── -->
-  <div id="rsub-forecast">
-    <iframe id="windy-frame"
-      allowfullscreen
-      allow="geolocation"
-      title="Windy.com forecast radar">
-    </iframe>
-    <div class="windy-footer">
-      <span>
-        Forecast radar &amp; precipitation from
-        <a href="https://windy.com" target="_blank" rel="noopener">Windy.com</a>
-        · ECMWF &amp; GFS models · updates every 6 hrs
-      </span>
-      <span>Drag the bottom timeline to scrub · scroll or pinch to zoom · click map for point forecast</span>
-    </div>
-  </div>
 
 </div> <!-- /tab-radar -->
 
@@ -1835,10 +1773,6 @@ async function initRadar() {
   if (radarMap) {
     updateLocationMarker();
     loadPrecipForecast(loc.lat, loc.lon);
-    // Also update Windy if forecast sub-panel is active
-    if (document.getElementById('rsub-forecast').style.display !== 'none') {
-      updateWindyEmbed();
-    }
     return;
   }
 
@@ -1848,8 +1782,8 @@ async function initRadar() {
     zoomControl: true,
   });
 
-  // Dark base map (CartoDB Dark Matter)
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  // Light base map (CartoDB Voyager)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors &copy; <a href="https://carto.com">CARTO</a>',
     subdomains: 'abcd',
     maxZoom: 19,
@@ -1862,54 +1796,6 @@ async function initRadar() {
   loadPrecipForecast(loc.lat, loc.lon);
 }
 
-// ── Radar sub-tab switching ───────────────────────────────
-function setRadarSub(sub) {
-  document.querySelectorAll('.rsub-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.rsub-btn').forEach(b => {
-    if (b.getAttribute('onclick') === `setRadarSub('${sub}')`) b.classList.add('active');
-  });
-  const live = document.getElementById('rsub-live');
-  const fcst = document.getElementById('rsub-forecast');
-  if (sub === 'live') {
-    live.style.display = 'flex';
-    fcst.style.display = 'none';
-    // Leaflet needs a size hint after being hidden
-    if (radarMap) setTimeout(() => radarMap.invalidateSize(), 50);
-  } else {
-    live.style.display = 'none';
-    fcst.style.display = 'flex';
-    updateWindyEmbed();
-  }
-}
-
-// ── Windy.com forecast embed ─────────────────────────────
-function updateWindyEmbed() {
-  const loc = state.currentLocation || DEFAULT_LOCATION;
-  const params = [
-    `lat=${loc.lat}`,
-    `lon=${loc.lon}`,
-    `detailLat=${loc.lat}`,
-    `detailLon=${loc.lon}`,
-    `zoom=7`,
-    `level=surface`,
-    `overlay=rain`,        // precipitation overlay
-    `product=ecmwf`,       // ECMWF global model (most reliable)
-    `menu=`,
-    `message=true`,
-    `marker=true`,
-    `calendar=now`,
-    `pressure=`,
-    `type=map`,
-    `location=coordinates`,
-    `detail=`,
-    `metricWind=mph`,
-    `metricTemp=%C2%B0F`,
-    `radarRange=-1`,
-  ].join('&');
-  const src = `https://embed.windy.com/embed2.html?${params}`;
-  const frame = document.getElementById('windy-frame');
-  if (frame.src !== src) frame.src = src;
-}
 
 // ── Radar zoom presets ────────────────────────────────────
 function setRadarZoom(z) {
