@@ -287,16 +287,7 @@
     .alert-close { background: none; border: none; color: var(--text-muted); font-size: 17px; cursor: pointer; flex-shrink: 0; padding: 0; line-height: 1; }
     .alert-close:hover { color: var(--text); }
 
-    /* ── Hourly ──────────────────────────────────────────── */
-    #hourly-scroll {
-      display: flex; gap: 8px; overflow-x: auto;
-      padding: 4px 0 8px;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,0.15) transparent;
-      scroll-snap-type: x mandatory;
-    }
-    #hourly-scroll::-webkit-scrollbar { height: 4px; }
-    #hourly-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+    /* ── Hourly / HRRR items ─────────────────────────────── */
     .hour-item {
       flex-shrink: 0;
       display: flex; flex-direction: column; align-items: center; gap: 5px;
@@ -315,6 +306,27 @@
     .hour-precip { font-size: 11px; color: #64b5f6; }
     .hrrr-gust   { font-size: 11px; color: #aed581; }
     .hrrr-badge  { font-size: 10px; color: var(--text-muted); background: rgba(255,255,255,0.07); border-radius: 10px; padding: 2px 8px; margin-left: 8px; font-weight: 400; vertical-align: middle; }
+    .cape-info-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 15px; height: 15px; border-radius: 50%;
+      border: 1px solid currentColor; font-size: 9px; font-weight: 700;
+      cursor: pointer; opacity: 0.7; background: transparent;
+      color: inherit; margin-left: 6px; flex-shrink: 0; line-height: 1;
+    }
+    .cape-info-btn:hover { opacity: 1; }
+    .cape-tooltip {
+      display: none; position: absolute; bottom: calc(100% + 8px); left: 0;
+      background: #0a1628; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px; padding: 12px 14px; width: 240px;
+      font-size: 12px; color: var(--text); font-weight: 400; z-index: 200;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4); line-height: 1.5;
+    }
+    .cape-tooltip .ct-row { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .cape-tooltip .ct-row:last-child { border-bottom: none; }
+    .cape-tooltip .ct-label { font-weight: 600; }
+    .cape-tooltip .ct-val { color: var(--text-muted); font-size: 11px; }
+    .cape-info-btn:hover .cape-tooltip,
+    .cape-info-btn.open .cape-tooltip { display: block; }
 
     /* ── Daily ───────────────────────────────────────────── */
     #daily-list { display: flex; flex-direction: column; }
@@ -846,12 +858,6 @@
     <!-- Alerts -->
     <div id="alerts-section"></div>
 
-    <!-- Hourly -->
-    <div class="card fade-in">
-      <div class="section-label">Hourly Forecast</div>
-      <div id="hourly-scroll"></div>
-    </div>
-
     <!-- HRRR Model -->
     <div class="card fade-in" id="hrrr-card" style="display:none;">
       <div class="section-label">HRRR Forecast <span class="hrrr-badge">3km · Updates hourly</span></div>
@@ -1245,7 +1251,6 @@ function renderNWS(location, obs, forecast, hourly, alerts, nwsProps) {
   renderCurrentCard({ location, displayTemp, feelsLike, humidity, dewpoint, windMph, windDir, gustMph, pressInHg, visMi, description, emoji, updatedAt });
   setBodyBg(description, isDaytime);
   renderAlerts(alerts);
-  renderNWSHourly(hourly?.properties?.periods || []);
   renderNWSDaily(periods);
   renderDetailsGrid({ humidity, dewpoint, windMph, windDir, gustMph, pressInHg, visMi, cloudCover: null });
 
@@ -1278,7 +1283,6 @@ function renderOpenMeteo(location, data) {
   });
   setBodyBg(wmoDesc(cur.weather_code), isDay);
   renderAlerts([]);
-  renderOMHourly(data);
   renderOMDaily(data);
   renderDetailsGrid({ humidity: cur.relative_humidity_2m, dewpoint: cur.dew_point_2m, windMph: cur.wind_speed_10m, windDir: degreesToCompass(cur.wind_direction_10m), gustMph: cur.wind_gusts_10m, pressInHg: hpaToInHg(cur.pressure_msl), visMi: null, cloudCover: cur.cloud_cover });
   document.getElementById('source-badge').innerHTML =
@@ -1370,42 +1374,6 @@ function toggleAlertDetail(btn) {
 // Render: Hourly
 // ───────────────────────────────────────────────────────────
 
-function renderNWSHourly(periods) {
-  const c = document.getElementById('hourly-scroll');
-  c.innerHTML = '';
-  periods.slice(0, 25).forEach((p, i) => {
-    const el = document.createElement('div');
-    el.className = 'hour-item' + (i===0?' now':'');
-    const precip = p.probabilityOfPrecipitation?.value;
-    el.innerHTML = `
-      <div class="hour-time">${i===0?'Now':fmtTime(new Date(p.startTime))}</div>
-      <div class="hour-emoji">${nwsEmoji(p.shortForecast,p.isDaytime)}</div>
-      <div class="hour-temp">${fmtTemp(p.temperature)}</div>
-      ${precip>15?`<div class="hour-precip">💧${precip}%</div>`:''}`;
-    c.appendChild(el);
-  });
-}
-
-function renderOMHourly(data) {
-  const c = document.getElementById('hourly-scroll');
-  c.innerHTML = '';
-  const now = Date.now();
-  let first = data.hourly.time.findIndex(t => new Date(t.replace('T',' ')).getTime() >= now - 3600000);
-  if (first < 0) first = 0;
-  data.hourly.time.slice(first, first+25).forEach((t, i) => {
-    const idx = first + i;
-    const isDay = data.hourly.is_day?.[idx] ?? 1;
-    const precip = data.hourly.precipitation_probability[idx];
-    const el = document.createElement('div');
-    el.className = 'hour-item' + (i===0?' now':'');
-    el.innerHTML = `
-      <div class="hour-time">${i===0?'Now':fmtTime(new Date(t.replace('T',' ')))}</div>
-      <div class="hour-emoji">${wmoEmoji(data.hourly.weather_code[idx], isDay===1)}</div>
-      <div class="hour-temp">${fmtTemp(data.hourly.temperature_2m[idx])}</div>
-      ${precip>15?`<div class="hour-precip">💧${precip}%</div>`:''}`;
-    c.appendChild(el);
-  });
-}
 
 async function loadHRRR(lat, lon) {
   const card = document.getElementById('hrrr-card');
@@ -1465,10 +1433,33 @@ function renderHRRR(data) {
       high:     { label: '⛈️ High Storm Potential',     color: '#ff9800' },
       extreme:  { label: '🌪️ Extreme Storm Potential',  color: '#f44336' },
     }[level];
-    capeRow.style.cssText = `display:flex;align-items:center;gap:8px;margin-top:8px;padding:6px 10px;` +
-      `border-radius:8px;background:${info.color}22;color:${info.color};font-size:12px;font-weight:600;`;
-    capeRow.innerHTML = `${info.label}<span style="color:var(--text-muted);font-weight:400;margin-left:4px;">` +
-      `CAPE ${Math.round(maxCape)} J/kg · next 18h</span>`;
+    capeRow.style.cssText = `display:flex;align-items:center;gap:4px;margin-top:8px;padding:6px 10px;` +
+      `border-radius:8px;background:${info.color}22;color:${info.color};font-size:12px;font-weight:600;position:relative;`;
+    capeRow.innerHTML = `
+      ${info.label}
+      <button class="cape-info-btn" onclick="this.classList.toggle('open')" title="What is CAPE?">i
+        <div class="cape-tooltip">
+          <div class="ct-row">
+            <span>⚡</span>
+            <div><div class="ct-label" style="color:#ffd54f">Moderate · 500–1,500 J/kg</div>
+            <div class="ct-val">Storms possible; stay weather-aware</div></div>
+          </div>
+          <div class="ct-row">
+            <span>⛈️</span>
+            <div><div class="ct-label" style="color:#ff9800">High · 1,500–2,500 J/kg</div>
+            <div class="ct-val">Significant storms likely; have a plan</div></div>
+          </div>
+          <div class="ct-row">
+            <span>🌪️</span>
+            <div><div class="ct-label" style="color:#f44336">Extreme · 2,500+ J/kg</div>
+            <div class="ct-val">Severe storm threat; take precautions</div></div>
+          </div>
+          <div style="margin-top:8px;font-size:10px;color:var(--text-muted);font-weight:400">
+            CAPE = Convective Available Potential Energy —<br>a measure of atmospheric instability
+          </div>
+        </div>
+      </button>
+      <span style="color:var(--text-muted);font-weight:400;margin-left:4px;">CAPE ${Math.round(maxCape)} J/kg · next 18h</span>`;
   } else {
     capeRow.style.display = 'none';
   }
