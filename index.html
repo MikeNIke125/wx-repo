@@ -1625,7 +1625,7 @@ function geolocate() {
     if (err.code !== err.PERMISSION_DENIED) {
       showError('Could not get your location. Try searching for a city instead.');
     }
-  }, { timeout:10000 });
+  });
 }
 
 // ───────────────────────────────────────────────────────────
@@ -2131,8 +2131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const { name } = await reverseGeocode(lat, lon);
         loadWeather({ name, lat, lon });
       },
-      () => loadWeather(DEFAULT_LOCATION),
-      { timeout: 8000 }
+      () => loadWeather(DEFAULT_LOCATION)
     );
   } else {
     loadWeather(DEFAULT_LOCATION);
