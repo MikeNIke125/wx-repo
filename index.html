@@ -1536,10 +1536,6 @@ function renderDetailsGrid({ humidity, dewpoint, windMph, windDir, gustMph, pres
 
 function loadSaved() {
   try { state.savedLocations = JSON.parse(localStorage.getItem(LS_SAVED)||'[]'); } catch { state.savedLocations = []; }
-  if (!state.savedLocations.some(s => s.name === DEFAULT_LOCATION.name)) {
-    state.savedLocations.unshift(DEFAULT_LOCATION);
-    persistSaved();
-  }
 }
 function persistSaved() { localStorage.setItem(LS_SAVED, JSON.stringify(state.savedLocations)); }
 
@@ -1577,7 +1573,7 @@ function toggleSave() {
   const loc = state.currentLocation;
   if (!loc) return;
   const idx = state.savedLocations.findIndex(s => s.name === loc.name);
-  if (idx >= 0) { if (loc.name !== DEFAULT_LOCATION.name) state.savedLocations.splice(idx, 1); }
+  if (idx >= 0) { state.savedLocations.splice(idx, 1); }
   else state.savedLocations.push(loc);
   persistSaved();
   const isSaved = state.savedLocations.some(s => s.name === loc.name);
@@ -2262,7 +2258,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('unit-toggle').addEventListener('click', toggleUnits);
   document.getElementById('retry-btn').addEventListener('click', () => loadWeather(state.currentLocation || DEFAULT_LOCATION));
 
-  loadWeather(DEFAULT_LOCATION);
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        const { name } = await reverseGeocode(lat, lon);
+        loadWeather({ name, lat, lon });
+      },
+      () => loadWeather(DEFAULT_LOCATION),
+      { timeout: 8000 }
+    );
+  } else {
+    loadWeather(DEFAULT_LOCATION);
+  }
 });
 </script>
 </body>
