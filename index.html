@@ -831,16 +831,16 @@
       <div id="hrrr-cape-row"></div>
     </div>
 
-    <!-- 7-day -->
-    <div class="card fade-in">
-      <div class="section-label">7-Day Forecast</div>
-      <div id="daily-list"></div>
-    </div>
-
     <!-- Details -->
     <div class="card fade-in">
       <div class="section-label">Current Details</div>
       <div id="details-grid"></div>
+    </div>
+
+    <!-- 7-day -->
+    <div class="card fade-in">
+      <div class="section-label">7-Day Forecast</div>
+      <div id="daily-list"></div>
     </div>
 
     <!-- Saved locations -->
@@ -1151,13 +1151,14 @@ async function loadWeather(location) {
 
     if (nwsPoint) {
       const props = nwsPoint.properties;
-      const [forecast, hourly, obs, alerts] = await Promise.all([
+      const [forecast, hourly, obs, alerts, sunData] = await Promise.all([
         fetchNWS(props.forecast),
         fetchNWS(props.forecastHourly),
         getNWSObs(props.observationStations),
         getAlerts(location.lat, location.lon),
+        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}&daily=sunrise,sunset&forecast_days=7&timezone=auto`).then(r=>r.json()).catch(()=>null),
       ]);
-      renderNWS(location, obs, forecast, hourly, alerts, props);
+      renderNWS(location, obs, forecast, hourly, alerts, props, sunData);
       loadHRRR(location.lat, location.lon);
     } else {
       const om = await getOpenMeteo(location.lat, location.lon);
@@ -1183,7 +1184,7 @@ async function loadWeather(location) {
 // Render: NWS
 // ───────────────────────────────────────────────────────────
 
-function renderNWS(location, obs, forecast, hourly, alerts, nwsProps) {
+function renderNWS(location, obs, forecast, hourly, alerts, nwsProps, sunData) {
   const op = obs?.properties;
   const periods = forecast?.properties?.periods || [];
   const cur = periods[0];
@@ -1210,9 +1211,9 @@ function renderNWS(location, obs, forecast, hourly, alerts, nwsProps) {
   renderCurrentCard({ location, displayTemp, feelsLike, humidity, dewpoint, windMph, windDir, gustMph, pressInHg, visMi, description, emoji, updatedAt });
   setBodyBg(description, isDaytime);
   renderAlerts(alerts);
-  renderNWSDaily(periods);
+  renderNWSDaily(periods, sunData);
   renderDetailsGrid({ humidity, dewpoint, windMph, windDir, gustMph, pressInHg, visMi, cloudCover: null });
-  loadSunTimes(location.lat, location.lon);
+  if (sunData?.daily?.sunrise?.[0]) renderSunCard(sunData.daily.sunrise[0], sunData.daily.sunset[0]);
 
   document.getElementById('source-badge').innerHTML =
     `Data: <a href="https://www.weather.gov" target="_blank" rel="noopener">NOAA / National Weather Service</a>` +
@@ -1434,7 +1435,7 @@ function renderHRRR(data) {
 // Render: Daily
 // ───────────────────────────────────────────────────────────
 
-function appendDay(container, { name, dateLabel, emoji, description, highF, lowF, precip, windSpeed, windDir, humidity, detailedForecast, precipAmt, gustMph }) {
+function appendDay(container, { name, dateLabel, emoji, description, highF, lowF, precip, windSpeed, windDir, humidity, detailedForecast, precipAmt, gustMph, sunrise, sunset }) {
   const wrapper = document.createElement('div');
   wrapper.className = 'day-item';
 
@@ -1461,6 +1462,11 @@ function appendDay(container, { name, dateLabel, emoji, description, highF, lowF
   stats.push(`💧 ${precip}% precip chance`);
   if (precipAmt != null) stats.push(`🌧 ${precipAmt}" expected`);
   if (humidity != null) stats.push(`💦 ${humidity}% humidity`);
+  if (sunrise && sunset) {
+    const fmtSun = raw => new Date(typeof raw === 'number' ? raw * 1000 : raw).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+    stats.push(`🌅 ${fmtSun(sunrise)}`);
+    stats.push(`🌇 ${fmtSun(sunset)}`);
+  }
   const statsHtml = stats.map(s => `<span class="dd-stat">${s}</span>`).join('');
   const descHtml = detailedForecast ? `<div class="day-detail-desc">${detailedForecast}</div>` : '';
   detail.innerHTML = `<div class="day-detail-stats">${statsHtml}</div>${descHtml}`;
@@ -1475,13 +1481,22 @@ function appendDay(container, { name, dateLabel, emoji, description, highF, lowF
   container.appendChild(wrapper);
 }
 
-function renderNWSDaily(periods) {
+function renderNWSDaily(periods, sunData) {
   const c = document.getElementById('daily-list');
   c.innerHTML = '';
+  // Build date → sun times lookup
+  const sunMap = {};
+  if (sunData?.daily?.time) {
+    sunData.daily.time.forEach((t, i) => {
+      sunMap[t] = { rise: sunData.daily.sunrise[i], set: sunData.daily.sunset[i] };
+    });
+  }
   let i = 0, days = 0;
   while (i < periods.length && days < 7) {
     const p = periods[i];
     const dateLabel = p.startTime ? new Date(p.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const dateKey   = p.startTime ? p.startTime.substring(0, 10) : '';
+    const sun = sunMap[dateKey] || {};
     if (p.isDaytime) {
       const n = periods[i+1];
       appendDay(c, {
@@ -1491,6 +1506,7 @@ function renderNWSDaily(periods) {
         windSpeed: p.windSpeed, windDir: p.windDirection,
         humidity: p.relativeHumidity?.value ?? null,
         detailedForecast: p.detailedForecast,
+        sunrise: sun.rise, sunset: sun.set,
       });
       i += 2;
     } else {
@@ -1501,6 +1517,7 @@ function renderNWSDaily(periods) {
         windSpeed: p.windSpeed, windDir: p.windDirection,
         humidity: p.relativeHumidity?.value ?? null,
         detailedForecast: p.detailedForecast,
+        sunrise: sun.rise, sunset: sun.set,
       });
       i += 1;
     }
@@ -1527,6 +1544,8 @@ function renderOMDaily(data) {
       windDir: dir != null ? degreesToCompass(dir) : null,
       gustMph: data.daily.windgusts_10m_max?.[i],
       precipAmt: pSum != null && pSum > 0 ? pSum.toFixed(2) : null,
+      sunrise: data.daily.sunrise?.[i],
+      sunset:  data.daily.sunset?.[i],
     });
   });
 }
