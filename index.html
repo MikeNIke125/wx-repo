@@ -356,6 +356,16 @@
     .day-temps { font-size: 14px; font-weight: 600; text-align: right; white-space: nowrap; }
     .day-low { color: var(--text-muted); font-weight: 400; }
 
+    /* ── Sun card ───────────────────────────────────────── */
+    .sun-row { display: flex; align-items: center; gap: 10px; margin: 10px 0 7px; }
+    .sun-time { font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+    .sun-bar { flex: 1; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; position: relative; }
+    .sun-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg,#ff9800,#ffd54f 50%,#ff9800); max-width: 100%; }
+    .sun-bar-fill.night { background: rgba(100,140,220,0.2); }
+    .sun-dot { position: absolute; top: 50%; transform: translate(-50%,-50%); width: 13px; height: 13px; border-radius: 50%; background: #ffd54f; box-shadow: 0 0 10px rgba(255,213,79,0.75); pointer-events: none; }
+    .sun-dot.night { background: #90caf9; box-shadow: 0 0 8px rgba(144,202,249,0.6); }
+    .sun-footer { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+
     /* ── Details ─────────────────────────────────────────── */
     #details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 11px; }
     .detail-item {
@@ -811,6 +821,9 @@
     <!-- Alerts -->
     <div id="alerts-section"></div>
 
+    <!-- Sunrise / Sunset -->
+    <div class="card fade-in" id="sun-card" style="display:none;"></div>
+
     <!-- HRRR Model -->
     <div class="card fade-in" id="hrrr-card" style="display:none;">
       <div class="section-label">HRRR Forecast <span class="hrrr-badge">3km · Updates hourly</span></div>
@@ -1151,6 +1164,7 @@ async function loadWeather(location) {
       renderOpenMeteo(location, om);
     }
 
+    loadAQI(location.lat, location.lon);
     renderSavedLocations();
     document.getElementById('main-content').classList.remove('hidden');
 
@@ -1198,6 +1212,7 @@ function renderNWS(location, obs, forecast, hourly, alerts, nwsProps) {
   renderAlerts(alerts);
   renderNWSDaily(periods);
   renderDetailsGrid({ humidity, dewpoint, windMph, windDir, gustMph, pressInHg, visMi, cloudCover: null });
+  loadSunTimes(location.lat, location.lon);
 
   document.getElementById('source-badge').innerHTML =
     `Data: <a href="https://www.weather.gov" target="_blank" rel="noopener">NOAA / National Weather Service</a>` +
@@ -1230,6 +1245,7 @@ function renderOpenMeteo(location, data) {
   renderAlerts([]);
   renderOMDaily(data);
   renderDetailsGrid({ humidity: cur.relative_humidity_2m, dewpoint: cur.dew_point_2m, windMph: cur.wind_speed_10m, windDir: degreesToCompass(cur.wind_direction_10m), gustMph: cur.wind_gusts_10m, pressInHg: hpaToInHg(cur.pressure_msl), visMi: null, cloudCover: cur.cloud_cover });
+  if (data.daily?.sunrise?.[0]) renderSunCard(data.daily.sunrise[0], data.daily.sunset[0]);
   document.getElementById('source-badge').innerHTML =
     `Data: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · ${data.timezone || ''}`;
 }
@@ -2178,6 +2194,92 @@ function setupRadarControls() {
     if (e.key === 'ArrowLeft')  radPrev();
     if (e.key === 'ArrowRight') radNext();
   });
+}
+
+// ───────────────────────────────────────────────────────────
+// Sunrise / Sunset
+// ───────────────────────────────────────────────────────────
+
+function renderSunCard(riseRaw, setRaw) {
+  const card = document.getElementById('sun-card');
+  if (!riseRaw || !setRaw) return;
+  const rise = typeof riseRaw === 'number' ? riseRaw * 1000 : new Date(riseRaw).getTime();
+  const set  = typeof setRaw  === 'number' ? setRaw  * 1000 : new Date(setRaw).getTime();
+  if (!rise || !set) return;
+  const now   = Date.now();
+  const dayMs = set - rise;
+  const fmt   = ts => new Date(ts).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+  const dh = Math.floor(dayMs / 3600000);
+  const dm = Math.floor((dayMs % 3600000) / 60000);
+  const isDay = now >= rise && now < set;
+  let pct, nextLabel;
+  if (now < rise) {
+    pct = 0;
+    const d = rise - now;
+    nextLabel = `Sunrise in ${Math.floor(d/3600000)}h ${Math.floor((d%3600000)/60000)}m`;
+  } else if (isDay) {
+    pct = (now - rise) / dayMs;
+    const d = set - now;
+    const h = Math.floor(d/3600000), m = Math.floor((d%3600000)/60000);
+    nextLabel = `Sunset in ${h > 0 ? h+'h ' : ''}${m}m`;
+  } else {
+    pct = 1;
+    const d = (rise + 86400000) - now;
+    const h = Math.floor(d/3600000), m = Math.floor((d%3600000)/60000);
+    nextLabel = `Sunrise in ${h > 0 ? h+'h ' : ''}${m}m`;
+  }
+  const p = (Math.min(1, Math.max(0, pct)) * 100).toFixed(1);
+  card.innerHTML = `
+    <div class="section-label">Daylight</div>
+    <div class="sun-row">
+      <span class="sun-time">🌅 ${fmt(rise)}</span>
+      <div class="sun-bar">
+        <div class="sun-bar-fill${isDay ? '' : ' night'}" style="width:${p}%"></div>
+        <div class="sun-dot${isDay ? '' : ' night'}" style="left:${p}%"></div>
+      </div>
+      <span class="sun-time">🌇 ${fmt(set)}</span>
+    </div>
+    <div class="sun-footer"><span>${nextLabel}</span><span>${dh}h ${dm}m daylight</span></div>`;
+  card.style.display = '';
+}
+
+async function loadSunTimes(lat, lon) {
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=sunrise,sunset&forecast_days=1&timezone=auto`);
+    const d = await r.json();
+    if (d.daily?.sunrise?.[0]) renderSunCard(d.daily.sunrise[0], d.daily.sunset[0]);
+  } catch {}
+}
+
+// ───────────────────────────────────────────────────────────
+// Air Quality Index
+// ───────────────────────────────────────────────────────────
+
+async function loadAQI(lat, lon) {
+  try {
+    const r = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=us_aqi&timezone=auto`);
+    const d = await r.json();
+    const aqi = d.current?.us_aqi;
+    if (aqi != null) injectAQITile(aqi);
+  } catch {}
+}
+
+function injectAQITile(aqi) {
+  const { label, color } =
+    aqi <= 50  ? { label:'Good',             color:'#66bb6a' } :
+    aqi <= 100 ? { label:'Moderate',         color:'#fdd835' } :
+    aqi <= 150 ? { label:'Sensitive Groups', color:'#ff9800' } :
+    aqi <= 200 ? { label:'Unhealthy',         color:'#f44336' } :
+    aqi <= 300 ? { label:'Very Unhealthy',   color:'#9c27b0' } :
+                 { label:'Hazardous',        color:'#7e0023' };
+  const tile = document.createElement('div');
+  tile.className = 'detail-item';
+  tile.innerHTML = `
+    <div class="detail-label">Air Quality</div>
+    <div class="detail-icon">🌫️</div>
+    <div class="detail-value" style="color:${color}">${aqi}</div>
+    <div class="detail-sub">${label}</div>`;
+  document.getElementById('details-grid')?.appendChild(tile);
 }
 
 // ───────────────────────────────────────────────────────────
